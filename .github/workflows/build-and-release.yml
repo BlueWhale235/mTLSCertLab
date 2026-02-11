@@ -3,9 +3,7 @@ name: Build and Release
 on:
   push:
     branches: [ "main" ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ "main" ]
+    tags: [ "v*" ] # 当推送版本标签时触发 Release
 
 jobs:
   build:
@@ -18,14 +16,15 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x' # 根据你的目标版本调整，如 6.0.x 或 8.0.x
+        dotnet-version: '8.0.x'
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore mtls.csproj
 
     - name: Publish Single File
+      # 显式指定 .csproj 以支持 --output 参数并消除警告
       run: |
-        dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+        dotnet publish mtls.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
