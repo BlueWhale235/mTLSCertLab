@@ -3,7 +3,17 @@ name: Build and Release
 on:
   push:
     branches: [ "main" ]
-    tags: [ "v*" ] # 当推送版本标签时触发 Release
+    tags: [ "v*" ] # 只有推送如 v1.0.0 这样的标签才会触发 Release
+  workflow_dispatch: # 允许在 GitHub Actions 页面手动点击运行
+    inputs:
+      version:
+        description: '发布版本号 (例如: v1.0.1)'
+        required: false
+        default: ''
+
+# 必须显式声明权限，否则 GITHUB_TOKEN 可能无法创建 Release
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -22,7 +32,6 @@ jobs:
       run: dotnet restore mtls.csproj
 
     - name: Publish Single File
-      # 显式指定 .csproj 以支持 --output 参数并消除警告
       run: |
         dotnet publish mtls.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
@@ -33,9 +42,12 @@ jobs:
         path: ./publish/*.exe
 
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v')
+      # 触发条件：推送了以 v 开头的标签，或者手动触发且填写了版本号
+      if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ github.event.inputs.version || github.ref_name }}
         files: ./publish/*.exe
+        generate_release_notes: true # 自动生成版本说明
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
