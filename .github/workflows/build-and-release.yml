@@ -25,9 +25,6 @@ jobs:
           - os: windows-latest
             rid: win-x86
             target: mtls-win-x86.exe
-          - os: ubuntu-latest
-            rid: linux-x64
-            target: mtls-linux-x64
 
     runs-on: ${{ matrix.os }}
 
@@ -43,29 +40,26 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Publish (Smallest Possible Size)
-      # 使用 --self-contained true 实现无框架依赖
-      # 使用 PublishTrimmed 裁剪未使用的代码
-      # 使用 EnableCompressionInSingleFile 进行内部压缩
+    - name: Publish (Self-Contained & Optimized)
       run: |
-        dotnet publish mtls.csproj \
-          -c Release \
-          -r ${{ matrix.rid }} \
-          --self-contained true \
-          -p:PublishTrimmed=true \
-          -p:PublishSingleFile=true \
-          -p:EnableCompressionInSingleFile=true \
-          -p:PublishReadyToRun=true \
-          -p:DebuggerSupport=false \
-          -p:EnableUnsafeBinaryFormatterSerialization=false \
-          -p:IncludeNativeLibrariesForSelfExtract=true \
+        dotnet publish mtls.csproj `
+          -c Release `
+          -r ${{ matrix.rid }} `
+          --self-contained true `
+          -p:PublishTrimmed=true `
+          -p:TrimMode=link `
+          -p:PublishSingleFile=true `
+          -p:EnableCompressionInSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:DebuggerSupport=false `
+          -p:EventSourceSupport=false `
           -o ./publish
 
     - name: Rename Output
       shell: bash
       run: |
-        # 统一处理 Windows 和 Linux 的文件重命名逻辑
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+        # 根据矩阵重命名生成的二进制文件
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           mv ./publish/mtls.exe ./publish/${{ matrix.target }}
         else
           mv ./publish/mtls ./publish/${{ matrix.target }}
