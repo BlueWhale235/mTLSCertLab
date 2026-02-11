@@ -19,14 +19,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-latest
-            rid: win-x64
+          - rid: win-x64
             target: mtls-win-x64.exe
-          - os: windows-latest
-            rid: win-x86
+          - rid: win-x86
             target: mtls-win-x86.exe
 
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
     - name: Checkout Code
@@ -36,34 +34,40 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
+        # .NET 10 目前可能需要开启预发布支持
+        include-prerelease: true
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore mtls.csproj
 
     - name: Publish (Self-Contained & Optimized)
+      # 由于 .csproj 比较简单，我们将所有发布优化参数放在命令行执行
+      # 参数说明：
+      # --self-contained true: 不依赖框架，内置运行时
+      # PublishTrimmed: 启用裁剪，减小体积
+      # TrimMode=partial: 对 WPF 最安全的裁剪模式
+      # PublishReadyToRun: 匹配你截图中的设置，加快启动
+      # EnableCompressionInSingleFile: 进一步压缩 exe 体积
       run: |
         dotnet publish mtls.csproj `
           -c Release `
           -r ${{ matrix.rid }} `
           --self-contained true `
-          -p:PublishTrimmed=true `
-          -p:TrimMode=link `
           -p:PublishSingleFile=true `
+          -p:PublishReadyToRun=true `
+          -p:PublishTrimmed=true `
+          -p:TrimMode=partial `
           -p:EnableCompressionInSingleFile=true `
           -p:IncludeNativeLibrariesForSelfExtract=true `
           -p:DebuggerSupport=false `
           -p:EventSourceSupport=false `
+          -p:UseSystemResourceKeys=true `
           -o ./publish
 
     - name: Rename Output
-      shell: bash
+      shell: pwsh
       run: |
-        # 根据矩阵重命名生成的二进制文件
-        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          mv ./publish/mtls.exe ./publish/${{ matrix.target }}
-        else
-          mv ./publish/mtls ./publish/${{ matrix.target }}
-        fi
+        Move-Item "./publish/mtls.exe" "./publish/${{ matrix.target }}"
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
