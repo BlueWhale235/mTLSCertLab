@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -14,6 +14,25 @@ using Microsoft.Win32;
 
 namespace MtlsCertGui
 {
+    /// <summary>
+    /// 证书配置模板类，支持 JSON 序列化
+    /// 使用 required 关键字确保属性不为空，消除 CS8618
+    /// </summary>
+    public class CertTemplate
+    {
+        public required string CaCn { get; set; } = "My Private Root CA";
+        public required string ServerCn { get; set; } = "localhost";
+        public required string ClientCn { get; set; } = "mtls-client-01";
+        public required string Org { get; set; } = "My Company";
+        public required string Country { get; set; } = "CN";
+        public required string Sans { get; set; } = "127.0.0.1, dev.local";
+        public required string KeySize { get; set; } = "2048";
+        public required string ValidityYears { get; set; } = "2";
+        public required string HashAlg { get; set; } = "SHA256";
+        public string CustomOids { get; set; } = "";
+        public int StartOffsetMinutes { get; set; } = 10;
+    }
+
     public class MtlsApp : Application
     {
         [STAThread]
@@ -24,28 +43,30 @@ namespace MtlsCertGui
         }
     }
 
-    public class CertTemplate
-    {
-        public string CaCn { get; set; }
-        public string ServerCn { get; set; }
-        public string ClientCn { get; set; }
-        public string Org { get; set; }
-        public string Country { get; set; }
-        public string Sans { get; set; }
-        public string KeySize { get; set; }
-        public string ValidityYears { get; set; }
-        public string HashAlg { get; set; }
-        public string CustomOids { get; set; }
-        public int StartOffsetMinutes { get; set; }
-    }
-
     public class MainWindow : Window
     {
-        private TextBox txtCaCn, txtServerCn, txtClientCn, txtOrg, txtCountry, txtValidity, txtPassword, txtSans, txtCustomOids, txtLog, txtStartOffset;
-        private ComboBox cmbKeySize, cmbHashAlg;
-        private Button btnGenerate, btnExportTemplate, btnImportTemplate;
+        // 标记为允许为 null 并在初始化后赋值，或直接在构造函数初始化
+        private TextBox txtCaCn = null!;
+        private TextBox txtServerCn = null!;
+        private TextBox txtClientCn = null!;
+        private TextBox txtOrg = null!;
+        private TextBox txtCountry = null!;
+        private TextBox txtValidity = null!;
+        private TextBox txtPassword = null!;
+        private TextBox txtSans = null!;
+        private TextBox txtCustomOids = null!;
+        private TextBox txtLog = null!;
+        private TextBox txtStartOffset = null!;
+        private ComboBox cmbKeySize = null!;
+        private ComboBox cmbHashAlg = null!;
+        private Button btnGenerate = null!;
 
         public MainWindow()
+        {
+            InitializeUi();
+        }
+
+        private void InitializeUi()
         {
             Title = "专业级 mTLS 证书实验室";
             Width = 650;
@@ -56,9 +77,9 @@ namespace MtlsCertGui
             var scrollViewer = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var mainStack = new StackPanel { Margin = new Thickness(25) };
 
-            // Header
+            // 标题
             mainStack.Children.Add(new TextBlock { 
-                Text = "Pro mTLS Certificate Toolkit", 
+                Text = "mTLS Certificate Toolkit", 
                 FontSize = 26, 
                 FontWeight = FontWeights.ExtraBold, 
                 Foreground = new SolidColorBrush(Color.FromRgb(31, 41, 55)),
@@ -66,15 +87,13 @@ namespace MtlsCertGui
                 HorizontalAlignment = HorizontalAlignment.Center 
             });
 
-            // --- Template Buttons ---
+            // 模板操作按钮
             var templatePanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,20) };
-            btnImportTemplate = CreateIconButton("📁 导入模板", (s, e) => ImportTemplate());
-            btnExportTemplate = CreateIconButton("💾 保存模板", (s, e) => ExportTemplate());
-            templatePanel.Children.Add(btnImportTemplate);
-            templatePanel.Children.Add(btnExportTemplate);
+            templatePanel.Children.Add(CreateIconButton("📁 导入配置", (s, e) => ImportTemplate()));
+            templatePanel.Children.Add(CreateIconButton("💾 保存配置", (s, e) => ExportTemplate()));
             mainStack.Children.Add(templatePanel);
 
-            // --- Subject Info Group ---
+            // 证书主体信息组
             var groupSubject = CreateGroup("证书主体 (Subject Identity)");
             txtCaCn = AddInput(groupSubject, "根证书 (CA) CN:", "My Private Root CA");
             txtServerCn = AddInput(groupSubject, "服务器证书 CN:", "localhost");
@@ -83,13 +102,12 @@ namespace MtlsCertGui
             txtCountry = AddInput(groupSubject, "国家/地区 (Country):", "CN");
             mainStack.Children.Add(groupSubject);
 
-            // --- Crypto Options Group ---
+            // 加密与扩展选项组
             var groupCrypto = CreateGroup("加密与扩展 (Crypto & Extensions)");
-            txtSans = AddInput(groupCrypto, "服务器 SAN (逗号分隔):", "127.0.0.1, dev.local, server.internal");
+            txtSans = AddInput(groupCrypto, "服务器 SAN (逗号分隔):", "127.0.0.1, dev.local");
             txtCustomOids = AddInput(groupCrypto, "额外 EKU OIDs (逗号分隔):", "");
             
             var cryptoGrid = new UniformGrid { Columns = 2 };
-            
             var keyBox = new StackPanel { Margin = new Thickness(0,0,5,0) };
             keyBox.Children.Add(new TextBlock { Text = "RSA 密钥长度:", Margin = new Thickness(0,5,0,2) });
             cmbKeySize = new ComboBox { ItemsSource = new[] { "2048", "3072", "4096" }, SelectedIndex = 0, Padding = new Thickness(5) };
@@ -101,11 +119,9 @@ namespace MtlsCertGui
             cmbHashAlg = new ComboBox { ItemsSource = new[] { "SHA256", "SHA384", "SHA512" }, SelectedIndex = 0, Padding = new Thickness(5) };
             hashBox.Children.Add(cmbHashAlg);
             cryptoGrid.Children.Add(hashBox);
-            
             groupCrypto.Children.Add(cryptoGrid);
 
             var timeGrid = new UniformGrid { Columns = 2, Margin = new Thickness(0,10,0,0) };
-            
             var valBox = new StackPanel { Margin = new Thickness(0,0,5,0) };
             valBox.Children.Add(new TextBlock { Text = "有效期 (年):", Margin = new Thickness(0,5,0,2) });
             txtValidity = new TextBox { Text = "2", Padding = new Thickness(5) };
@@ -117,12 +133,12 @@ namespace MtlsCertGui
             txtStartOffset = new TextBox { Text = "10", Padding = new Thickness(5) };
             offBox.Children.Add(txtStartOffset);
             timeGrid.Children.Add(offBox);
-
             groupCrypto.Children.Add(timeGrid);
+
             txtPassword = AddInput(groupCrypto, "PFX 保护密码:", "admin123");
             mainStack.Children.Add(groupCrypto);
 
-            // Generate Button
+            // 生成按钮
             btnGenerate = new Button
             {
                 Content = "🛠 生成全套 mTLS 证书",
@@ -132,12 +148,13 @@ namespace MtlsCertGui
                 Foreground = Brushes.White,
                 FontSize = 18,
                 FontWeight = FontWeights.Bold,
-                BorderThickness = new Thickness(0)
+                BorderThickness = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand
             };
             btnGenerate.Click += async (s, e) => await GenerateCertsAsync();
             mainStack.Children.Add(btnGenerate);
 
-            // Log
+            // 日志输出
             txtLog = new TextBox
             {
                 Height = 150,
@@ -157,7 +174,7 @@ namespace MtlsCertGui
 
         private Button CreateIconButton(string text, RoutedEventHandler handler)
         {
-            var btn = new Button { Content = text, Margin = new Thickness(5), Padding = new Thickness(10, 5, 10, 5), Background = Brushes.White };
+            var btn = new Button { Content = text, Margin = new Thickness(5), Padding = new Thickness(15, 7, 15, 7), Background = Brushes.White };
             btn.Click += handler;
             return btn;
         }
@@ -207,12 +224,22 @@ namespace MtlsCertGui
             if (openFile.ShowDialog() == true) {
                 try {
                     var template = JsonSerializer.Deserialize<CertTemplate>(File.ReadAllText(openFile.FileName));
-                    txtCaCn.Text = template.CaCn; txtServerCn.Text = template.ServerCn; txtClientCn.Text = template.ClientCn;
-                    txtOrg.Text = template.Org; txtCountry.Text = template.Country; txtSans.Text = template.Sans;
-                    cmbKeySize.Text = template.KeySize; cmbHashAlg.Text = template.HashAlg; txtValidity.Text = template.ValidityYears;
-                    txtCustomOids.Text = template.CustomOids; txtStartOffset.Text = template.StartOffsetMinutes.ToString();
+                    if (template == null) return;
+                    
+                    // 使用 ?? 处理潜在的 null 值，消除 CS8602
+                    txtCaCn.Text = template.CaCn ?? ""; 
+                    txtServerCn.Text = template.ServerCn ?? ""; 
+                    txtClientCn.Text = template.ClientCn ?? "";
+                    txtOrg.Text = template.Org ?? ""; 
+                    txtCountry.Text = template.Country ?? ""; 
+                    txtSans.Text = template.Sans ?? "";
+                    cmbKeySize.Text = template.KeySize ?? "2048"; 
+                    cmbHashAlg.Text = template.HashAlg ?? "SHA256"; 
+                    txtValidity.Text = template.ValidityYears ?? "2";
+                    txtCustomOids.Text = template.CustomOids ?? ""; 
+                    txtStartOffset.Text = template.StartOffsetMinutes.ToString();
                     Log("✅ 已从模板加载配置");
-                } catch { Log("❌ 模板格式错误"); }
+                } catch { Log("❌ 模板格式错误或已损坏"); }
             }
         }
 
@@ -224,8 +251,8 @@ namespace MtlsCertGui
             var config = new {
                 CaCn = txtCaCn.Text, ServerCn = txtServerCn.Text, ClientCn = txtClientCn.Text,
                 Org = txtOrg.Text, Country = txtCountry.Text,
-                KeySize = int.Parse(cmbKeySize.Text),
-                HashName = new HashAlgorithmName(cmbHashAlg.Text),
+                KeySize = int.TryParse(cmbKeySize.Text, out var ks) ? ks : 2048,
+                HashName = new HashAlgorithmName(cmbHashAlg.Text ?? "SHA256"),
                 ValidityYears = int.TryParse(txtValidity.Text, out int v) ? v : 2,
                 StartOffset = int.TryParse(txtStartOffset.Text, out int o) ? o : 10,
                 Password = txtPassword.Text,
@@ -239,7 +266,7 @@ namespace MtlsCertGui
             {
                 await Task.Run(() =>
                 {
-                    string outDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "certs_pro_output");
+                    string outDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "certs_output");
                     if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
                     Directory.CreateDirectory(outDir);
 
@@ -258,8 +285,8 @@ namespace MtlsCertGui
                     Log($"签署服务器证书: {config.ServerCn}...");
                     using var serverKey = RSA.Create(config.KeySize);
                     var serverRequest = new CertificateRequest($"CN={config.ServerCn}, {baseDn}", serverKey, config.HashName, RSASignaturePadding.Pkcs1);
-                    var serverEkus = new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") };
-                    foreach(var oid in config.CustomOids) serverEkus.Add(new Oid(oid));
+                    var serverEkus = new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }; // Server Auth
+                    foreach(var oidStr in config.CustomOids) serverEkus.Add(new Oid(oidStr));
                     serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(serverEkus, false));
                     
                     var sanBuilder = new SubjectAlternativeNameBuilder();
@@ -275,18 +302,18 @@ namespace MtlsCertGui
                     Log($"签署客户端证书: {config.ClientCn}...");
                     using var clientKey = RSA.Create(config.KeySize);
                     var clientRequest = new CertificateRequest($"CN={config.ClientCn}, {baseDn}", clientKey, config.HashName, RSASignaturePadding.Pkcs1);
-                    var clientEkus = new OidCollection { new Oid("1.3.6.1.5.5.7.3.2") };
-                    foreach(var oid in config.CustomOids) clientEkus.Add(new Oid(oid));
+                    var clientEkus = new OidCollection { new Oid("1.3.6.1.5.5.7.3.2") }; // Client Auth
+                    foreach(var oidStr in config.CustomOids) clientEkus.Add(new Oid(oidStr));
                     clientRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(clientEkus, false));
                     var clientCert = Sign(clientRequest, caCert, caKey, config.ValidityYears, startDate, config.HashName);
 
-                    // Saving
+                    // 保存文件
                     Save(outDir, "ca", caCert, null, null);
                     Save(outDir, "server", serverCert, serverKey, config.Password);
                     Save(outDir, "client", clientCert, clientKey, config.Password);
 
                     Log("\n✅ 成功！所有证书已就绪。");
-                    Log("目录: " + outDir);
+                    Log("输出目录: " + outDir);
                 });
             }
             catch (Exception ex) { Log("❌ 失败: " + ex.Message); }
@@ -301,7 +328,7 @@ namespace MtlsCertGui
                 start, start.AddYears(years), serial);
         }
 
-        private void Save(string dir, string name, X509Certificate2 cert, RSA key, string pwd)
+        private void Save(string dir, string name, X509Certificate2 cert, RSA? key, string? pwd)
         {
             File.WriteAllText(Path.Combine(dir, $"{name}.crt"), ExportPem(cert.Export(X509ContentType.Cert), "CERTIFICATE"));
             if (key != null) {
@@ -316,7 +343,7 @@ namespace MtlsCertGui
 
     public class UniformGrid : Panel 
     {
-        public int Columns { get; set; }
+        public int Columns { get; set; } = 1;
         protected override Size MeasureOverride(Size availableSize) {
             double w = availableSize.Width / Math.Max(1, Columns);
             foreach (UIElement child in Children) child.Measure(new Size(w, availableSize.Height));
