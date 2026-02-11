@@ -8,7 +8,6 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
-  <PublishTrimmed>true</PublishTrimmed>
-  <TrimMode>partial</TrimMode>
 </Project>
+
 
